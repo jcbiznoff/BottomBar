@@ -2,21 +2,27 @@ package com.roughike.bottombar;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
-import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.Build;
 import android.support.annotation.MenuRes;
+import android.support.v4.view.ViewCompat;
+import android.support.v4.view.ViewPropertyAnimatorCompat;
+import android.support.v4.view.ViewPropertyAnimatorListenerAdapter;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewAnimationUtils;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.TextView;
 
 /*
  * BottomBar library for Android
@@ -94,6 +100,28 @@ class MiscUtils {
     }
 
     /**
+     * A method for animating width for the tabs.
+     * @param tab tab to animate.
+     * @param start starting width.
+     * @param end final width after animation.
+     */
+    protected static void resizeTab(final View tab, float start, float end) {
+        ValueAnimator animator = ValueAnimator.ofFloat(start, end);
+        animator.setDuration(150);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animator) {
+                LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) tab.getLayoutParams();
+                if (params == null) return;
+
+                params.width = Math.round((float) animator.getAnimatedValue());
+                tab.setLayoutParams(params);
+            }
+        });
+        animator.start();
+    }
+
+    /**
      * Animate a background color change. Uses Circular Reveal if supported,
      * otherwise crossfades the background color in.
      *
@@ -107,43 +135,95 @@ class MiscUtils {
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     protected static void animateBGColorChange(View clickedView, final View backgroundView,
                                                final View bgOverlay, final int newColor) {
-        int centerX = (int) (clickedView.getX() + (clickedView.getMeasuredWidth() / 2));
+        int centerX = (int) (ViewCompat.getX(clickedView) + (clickedView.getMeasuredWidth() / 2));
         int centerY = clickedView.getMeasuredHeight() / 2;
         int finalRadius = backgroundView.getWidth();
 
         backgroundView.clearAnimation();
         bgOverlay.clearAnimation();
 
-        Animator circularReveal;
+        Object animator;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            circularReveal = ViewAnimationUtils
+            if (!bgOverlay.isAttachedToWindow()) {
+                return;
+            }
+
+            animator = ViewAnimationUtils
                     .createCircularReveal(bgOverlay, centerX, centerY, 0, finalRadius);
         } else {
-            bgOverlay.setAlpha(0);
-            circularReveal = ObjectAnimator.ofFloat(bgOverlay, "alpha", 0, 1);
+            ViewCompat.setAlpha(bgOverlay, 0);
+            animator = ViewCompat.animate(bgOverlay).alpha(1);
         }
 
-        circularReveal.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                onCancel();
-            }
+        if (animator instanceof ViewPropertyAnimatorCompat) {
+            ((ViewPropertyAnimatorCompat) animator).setListener(new ViewPropertyAnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(View view) {
+                    onCancel();
+                }
 
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                onCancel();
-            }
+                @Override
+                public void onAnimationCancel(View view) {
+                    onCancel();
+                }
 
-            private void onCancel() {
-                backgroundView.setBackgroundColor(newColor);
-                bgOverlay.setVisibility(View.INVISIBLE);
-                bgOverlay.setAlpha(1);
-            }
-        });
+                private void onCancel() {
+                    backgroundView.setBackgroundColor(newColor);
+                    bgOverlay.setVisibility(View.INVISIBLE);
+                    ViewCompat.setAlpha(bgOverlay, 1);
+                }
+            }).start();
+        } else if (animator != null) {
+            ((Animator) animator).addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    onCancel();
+                }
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    onCancel();
+                }
+
+                private void onCancel() {
+                    backgroundView.setBackgroundColor(newColor);
+                    bgOverlay.setVisibility(View.INVISIBLE);
+                    ViewCompat.setAlpha(bgOverlay, 1);
+                }
+            });
+
+            ((Animator) animator).start();
+        }
 
         bgOverlay.setBackgroundColor(newColor);
         bgOverlay.setVisibility(View.VISIBLE);
-        circularReveal.start();
+    }
+
+    /**
+     * A convenience method for setting text appearance.
+     *
+     * @param textView a TextView which textAppearance to modify.
+     * @param resId    a style resource for the text appearance.
+     */
+    @SuppressWarnings("deprecation")
+    protected static void setTextAppearance(TextView textView, int resId) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            textView.setTextAppearance(resId);
+        } else {
+            textView.setTextAppearance(textView.getContext(), resId);
+        }
+    }
+
+    /**
+     * Determine if the current UI Mode is Night Mode.
+     *
+     * @param context Context to get the configuration.
+     * @return true if the night mode is enabled, otherwise false.
+     */
+    protected static boolean isNightMode(Context context) {
+        int currentNightMode = context.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK;
+        return currentNightMode == Configuration.UI_MODE_NIGHT_YES;
     }
 }
